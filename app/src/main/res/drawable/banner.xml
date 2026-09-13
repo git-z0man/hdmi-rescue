@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A banner is required, or the leanback launcher will not show the app at all. A filled
+     rectangle with a border is all it takes. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#101418" />
+            <corners android:radius="8dp" />
+            <stroke android:width="3dp" android:color="#4FC3F7" />
+        </shape>
+    </item>
+</layer-list>
