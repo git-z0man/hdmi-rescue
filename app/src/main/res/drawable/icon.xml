@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- An HDMI port with a red cross in it: first aid for a black input. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#101418"
+        android:pathData="M8,0 H40 A8,8 0 0 1 48,8 V40 A8,8 0 0 1 40,48 H8 A8,8 0 0 1 0,40 V8 A8,8 0 0 1 8,0 Z" />
+    <path
+        android:pathData="M5,13 H43 V28 L36,35 H12 L5,28 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.5" />
+    <path
+        android:fillColor="#E53935"
+        android:pathData="M21.5,16.5 H26.5 V21 H31 V26 H26.5 V30.5 H21.5 V26 H17 V21 H21.5 Z" />
+</vector>

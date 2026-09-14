@@ -1,12 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A banner is required, or the leanback launcher will not show the app at all. A filled
-     rectangle with a border is all it takes. -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="#101418" />
-            <corners android:radius="8dp" />
-            <stroke android:width="3dp" android:color="#4FC3F7" />
-        </shape>
-    </item>
-</layer-list>
+<!-- A banner is required, or the leanback launcher will not show the app at all. The icon's
+     shapes on the same dark ground.
+     ⚠️ One flat vector, not a layer-list around @drawable/icon: the input menu (systemui) drew
+     only the layer-list's background and dropped the icon layer. A vector scales with whatever
+     bounds it is given. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path
+        android:fillColor="#101418"
+        android:pathData="M0,0 H320 V180 H0 Z" />
+    <group
+        android:scaleX="3"
+        android:scaleY="3"
+        android:translateX="88"
+        android:translateY="18">
+        <path
+            android:pathData="M5,13 H43 V28 L36,35 H12 L5,28 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineJoin="round"
+            android:strokeWidth="2.5" />
+        <path
+            android:fillColor="#E53935"
+            android:pathData="M21.5,16.5 H26.5 V21 H31 V26 H26.5 V30.5 H21.5 V26 H17 V21 H21.5 Z" />
+    </group>
+</vector>

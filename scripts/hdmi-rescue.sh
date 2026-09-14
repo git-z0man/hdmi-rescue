@@ -6,7 +6,6 @@
 #   ./scripts/hdmi-rescue.sh retune      # re-tune HDMI 4 (the raw port)
 #   ./scripts/hdmi-rescue.sh retune ps5  # re-tune the CEC entry "PlayStation 5"
 #   ./scripts/hdmi-rescue.sh restart-input   # restart the input service
-#   ./scripts/hdmi-rescue.sh cec-cycle       # CEC off, three seconds, on again
 #
 # ⚠️ **What actually breaks here** (proven on the device on 2026-09-11): Sony's
 # `com.sony.dtv.tvinput.external` starts with the television and sometimes fails to connect to
@@ -69,8 +68,13 @@ status)
 fix)
     # Smallest rung first: when only the session is stale after a hotplug, re-tuning is enough
     # and the service stays up.
+    # ⚠️ Only log lines from *after* the re-tune count — an old `notifyHardwareAvailable` from
+    # before the fault would otherwise skip the restart. Captured into a variable, not piped into
+    # `grep -q`: with `pipefail`, grep leaving early kills adb and turns a hit into a miss.
+    since=$(tv "date +'%m-%d %H:%M:%S.000'" | tr -d '\r')
     echo "1/3  re-tuning…";      retune "${2:-}"; sleep 4
-    if tv "logcat -d" | grep -q "notifyHardwareAvailable"; then
+    log=$(tv "logcat -d -T '$since'")
+    if grep -q "notifyHardwareAvailable" <<<"$log"; then
         echo "     hardware is there — nothing more was needed."
     else
         echo "2/3  restarting the input service…"; tv "am force-stop $SVC"; sleep 4
@@ -82,7 +86,5 @@ fix)
     ;;
 retune)        retune "${2:-}" ;;
 restart-input) tv "am force-stop $SVC"; echo "Service stopped — Android restarts it on next use." ;;
-cec-cycle)     tv "settings put global hdmi_control_enabled 0"; sleep 3
-               tv "settings put global hdmi_control_enabled 1"; echo "CEC off and on again." ;;
 *)             echo "unknown: $1" >&2; exit 2 ;;
 esac

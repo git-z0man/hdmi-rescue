@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.android.application)
+    id("com.android.application") version "9.4.0"
 }
 
 // Deliberately no Compose, no tv-material, no dependency at all. This is a handful of buttons on
@@ -23,21 +23,11 @@ android {
         versionName = "1.1"
     }
 
-    signingConfigs {
-        // Signed with the debug key on purpose: none of this goes to a store, and an unsigned
-        // build could not be installed at all.
-        create("perf") {
-            storeFile = File(System.getProperty("user.home"), ".android/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
-    }
-
     buildTypes {
         release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("perf")
+            // Signed with the debug key on purpose: none of this goes to a store, and an unsigned
+            // build could not be installed at all.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 }

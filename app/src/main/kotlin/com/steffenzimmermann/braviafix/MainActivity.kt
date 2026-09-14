@@ -8,8 +8,6 @@ import android.media.tv.TvContract
 import android.media.tv.TvInputInfo
 import android.media.tv.TvInputManager
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -41,17 +39,19 @@ class MainActivity : Activity() {
     private lateinit var log: TextView
     private var first: Button? = null
     private val tv by lazy { getSystemService(TvInputManager::class.java) }
-    private val main = Handler(Looper.getMainLooper())
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(BACKGROUND)
             setPadding(dp(48), dp(32), dp(48), dp(32))
         }
 
-        root.addView(title("HDMI Rescue"))
+        root.addView(TextView(this).apply {
+            text = "HDMI Rescue"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
+        })
         root.addView(
             hint(
                 "Black input, but no “No signal” message? Then the TV's input service is " +
@@ -76,12 +76,14 @@ class MainActivity : Activity() {
             // The contract says: "Have the system immediately kill all background processes
             // associated with the given package" — *background*. Whether the bound input service
             // counts is the system's call, not ours.
-            runCatching {
+            val outcome = runCatching {
                 getSystemService(ActivityManager::class.java).killBackgroundProcesses(INPUT_SERVICE_PKG)
-            }.onFailure { say("Failed: ${it.javaClass.simpleName}") }
+            }.fold(
+                { "Attempted. Now pick the input above once more.\n\nIf it stays black this app" },
+                { "Failed: ${it.javaClass.simpleName}.\n\nThis app" },
+            )
             say(
-                "Attempted. Now pick the input above once more.\n\n" +
-                    "If it stays black this app can do no more, and only these are left:\n" +
+                "$outcome can do no more, and only these are left:\n" +
                     "• switch the television off and on again, or\n" +
                     "• from a computer:  ./scripts/hdmi-rescue.sh fix"
             )
@@ -101,7 +103,7 @@ class MainActivity : Activity() {
         // in particular: this screen gets read when nothing else works. A remote that needs a
         // DOWN press before anything is even highlighted looks like the next defect. `post`,
         // because a node cannot take focus before the first layout pass.
-        first?.let { target -> main.post { target.requestFocus() } }
+        first?.let { target -> target.post { target.requestFocus() } }
     }
 
     /// Pass-through inputs only — HDMI and AV. Everything else (tuners, Play Movies) is not what
@@ -138,15 +140,9 @@ class MainActivity : Activity() {
             .onFailure { say("Could not switch: ${it.javaClass.simpleName}") }
     }
 
-    private fun say(text: String) = main.post { log.text = text }
+    private fun say(text: String) { log.text = text }
 
     // ---- building blocks --------------------------------------------------------------------
-
-    private fun title(text: String) = TextView(this).apply {
-        this.text = text
-        setTextColor(Color.WHITE)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f)
-    }
 
     private fun section(text: String) = TextView(this).apply {
         this.text = text.uppercase()
