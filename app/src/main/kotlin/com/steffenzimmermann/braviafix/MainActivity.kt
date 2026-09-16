@@ -1,13 +1,13 @@
 package com.steffenzimmermann.braviafix
 
 import android.app.Activity
-import android.app.ActivityManager
 import android.content.Intent
 import android.graphics.Color
 import android.media.tv.TvContract
 import android.media.tv.TvInputInfo
 import android.media.tv.TvInputManager
 import android.os.Bundle
+import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -30,14 +30,14 @@ import android.widget.TextView
 ///                              is not connected.
 ///     I/TIS_BuiltinTisBase_EX: it does not notify video available because stream is not opened.
 ///
-/// ⚠️ **This app cannot promise to repair the second case, and it does not claim to.** Switching
-/// inputs it can do for certain (rung 1); killing the service it can only *attempt* (rung 2) —
-/// `killBackgroundProcesses` reaches background processes only, and a bound service often is not
-/// one. When that fails it says what to do instead, rather than pretending it fixed anything.
+/// Two rungs: switching inputs (a VIEW intent, no permission), and restarting Sony's service over
+/// adb when switching is not enough — see [adbShell]. Restarting the whole television is *not* the
+/// third rung: the fault is a race at boot, so a reboot only rolls the same dice again.
 class MainActivity : Activity() {
 
     private lateinit var log: TextView
     private var first: Button? = null
+    private var lastInput: TvInputInfo? = null
     private val tv by lazy { getSystemService(TvInputManager::class.java) }
 
     override fun onCreate(state: Bundle?) {
@@ -72,28 +72,23 @@ class MainActivity : Activity() {
         else ports.forEach { info -> root.addView(inputButton(info).also { first = first ?: it }) }
 
         root.addView(section("If that is not enough"))
-        val restart = button("Restart the input service (attempt)") {
-            // The contract says: "Have the system immediately kill all background processes
-            // associated with the given package" — *background*. On 2026-09-15 the stuck service
-            // ran as a bound foreground service (`vis BFGS`), which this call does not reach. No
-            // exception says so either, hence the cautious wording on screen.
-            val outcome = runCatching {
-                getSystemService(ActivityManager::class.java).killBackgroundProcesses(INPUT_SERVICE_PKG)
-            }.fold(
-                {
-                    "Attempted — but Android usually keeps this service running. Pick the input " +
-                        "above once more.\n\nIf it stays black this app"
-                },
-                { "Failed: ${it.javaClass.simpleName}.\n\nThis app" },
+        val repair = button("Repair — restart the input service") { repair() }
+        root.addView(repair)
+        first = first ?: repair
+
+        // ⚠️ **The repair needs ADB debugging, and most televisions ship with it off.** The key is
+        // readable without any permission (`@Readable` since Android 12), so the app can say so
+        // instead of letting the button fail later.
+        if (Settings.Global.getInt(contentResolver, Settings.Global.ADB_ENABLED, 0) == 0) {
+            root.addView(
+                hint(
+                    "ADB debugging is switched off, and the repair cannot work without it. In the " +
+                        "developer options: Debugging → USB debugging. On a television that is what " +
+                        "opens the port this app talks to."
+                )
             )
-            say(
-                "$outcome can do no more, and only these are left:\n" +
-                    "• switch the television off and on again, or\n" +
-                    "• from a computer:  ./scripts/hdmi-rescue.sh fix"
-            )
+            root.addView(button("Open the developer options") { openDeveloperOptions() })
         }
-        root.addView(restart)
-        first = first ?: restart
 
         log = hint("").apply { setTextColor(ACCENT) }
         root.addView(log)
@@ -135,13 +130,64 @@ class MainActivity : Activity() {
     }
 
     private fun inputButton(info: TvInputInfo) = button("${label(info)}  —  ${stateOf(info)}") {
+        switchTo(info)
+    }
+
+    private fun switchTo(info: TvInputInfo) {
         // The same route the launcher takes when it switches inputs:
         // `TvContract.buildChannelUriForPassthroughInput` builds
         // `content://android.media.tv/passthrough/<inputId>` (TvContract.java:473-489), and a
         // VIEW intent on it needs no permission.
         val uri = TvContract.buildChannelUriForPassthroughInput(info.id)
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+            .onSuccess { lastInput = info }
             .onFailure { say("Could not switch: ${it.javaClass.simpleName}") }
+    }
+
+    /// Stop Sony's service, wait for the system to bring it back, then return to the input that
+    /// was black. Off the main thread — this opens a socket and may sit through a dialog.
+    private fun repair() {
+        say(
+            "Restarting the input service…\n\nIf the television asks whether to allow debugging, " +
+                "say yes and tick “Always allow”."
+        )
+        Thread {
+            val result = adbShell(this, "am force-stop $INPUT_SERVICE_PKG")
+            Thread.sleep(3_000)
+            runOnUiThread {
+                result.fold(
+                    {
+                        val back = lastInput
+                        if (back == null) say("The service was restarted. Now pick the input above.")
+                        else {
+                            say("The service was restarted — switching back to ${label(back)}.")
+                            switchTo(back)
+                        }
+                    },
+                    {
+                        say(
+                            "No adb connection: ${it.javaClass.simpleName}: ${it.message}\n\n" +
+                                "Check that ADB debugging is on, or repair it from a computer:\n" +
+                                "./scripts/hdmi-rescue.sh fix"
+                        )
+                    },
+                )
+            }
+        }.start()
+    }
+
+    /// ⚠️ On Android 12 TV settings the developer options open straight from this action, master
+    /// switch first on the page — no seven taps on the build number. The fallbacks are for a
+    /// television that dropped the intent filter: the About page carries that build number.
+    private fun openDeveloperOptions() {
+        val actions = listOf(
+            Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS,
+            Settings.ACTION_DEVICE_INFO_SETTINGS,
+            Settings.ACTION_SETTINGS,
+        )
+        if (actions.none { runCatching { startActivity(Intent(it)) }.isSuccess }) {
+            say("This television opens none of the settings screens by itself.")
+        }
     }
 
     private fun say(text: String) { log.text = text }

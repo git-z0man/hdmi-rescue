@@ -1,19 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- The attempt to stop Sony's input service. ⚠️ A *normal* permission, but no guarantee:
-         `killBackgroundProcesses` reaches background processes only, and a bound service often
-         is not one. From Android 14 a third-party app may use it on its own processes only
-         (ActivityManager.java:5329-5331) — the Bravia is Android 12, where that restriction does
-         not yet apply. The app says so honestly when it was not enough. -->
-    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
-
-    <!-- ⚠️ Without this the call never even reaches the service: package visibility (Android 11+)
-         hides Sony's package, and ActivityManager logs "Invalid packageName" and returns quietly
-         — seen on the device on 2026-09-15. -->
-    <queries>
-        <package android:name="com.sony.dtv.tvinput.external" />
-    </queries>
+    <!-- For the adb connection to the television's own loopback address. Even 127.0.0.1 needs it:
+         the permission is enforced as the `inet` group at socket creation. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <uses-feature android:name="android.software.leanback" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

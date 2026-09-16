@@ -41,16 +41,26 @@ adb -s 10.1.1.22:5555 install -r app/build/outputs/apk/release/app-release.apk
 It appears on the Google TV home screen as **HDMI Rescue**.
 
 1. Pick the affected input — occupied ports are listed first and one holds focus on open.
-2. If the picture stays away, press **Restart the input service (attempt)** and pick the input
-   again.
+2. If the picture stays away, press **Repair — restart the input service**. It switches back to
+   the input by itself once the service is up again.
 
 | | |
 |---|---|
 | Switching inputs | **certain.** A VIEW intent on `content://android.media.tv/passthrough/<inputId>` — the same route the launcher takes, and it needs no permission (`TvContract.java:473-489`). |
-| Restarting the service | **an attempt only, and usually in vain.** `killBackgroundProcesses` reaches background processes; the stuck service was seen running as a bound foreground service, which it does not reach. Really stopping Sony's service needs `FORCE_STOP_PACKAGES`, which a sideloaded app cannot hold — not even through `pm grant`. |
+| Restarting the service | **the real repair, with one prerequisite.** The app connects to the television's own adb daemon on `127.0.0.1:5555` and runs `am force-stop` there. That shell is uid 2000 and holds `FORCE_STOP_PACKAGES`; the app itself never could. |
 
-The app says so on screen rather than pretending otherwise: when the attempt is not enough it
-names the two routes that remain.
+No app can stop that service directly. `killBackgroundProcesses` stops at oom priority 500,
+while a service holding TV hardware sits at 100 — the system binds it with
+`BIND_FOREGROUND_SERVICE_WHILE_AWAKE` for as long as it exists — and `forceStopPackage` is
+signature-only. Hence the detour through adb.
+
+**What it needs:** ADB debugging switched on at the television (developer options → Debugging →
+USB debugging; on a set with no USB device port, that switch is what opens port 5555), and the
+"Allow debugging?" dialog confirmed once with the remote, with *Always allow* ticked. The app
+reads the setting on start and offers a button straight into the developer options when it is off.
+
+**Restarting the whole television is not a substitute.** The fault is a race at boot, so a reboot
+only rolls the same dice again — which is why it "sometimes" helps and often does not.
 
 ## The script
 
@@ -72,8 +82,9 @@ is on screen, so it is not something to run over someone's shoulder unannounced.
 - `local.properties` carries `sdk.dir`; it is git-ignored.
 - `compileSdk = 37`, `compileSdkMinor = 2` — AGP 9.4 requires the minor, and the package is
   called `platforms;android-37.2`.
-- No dependencies beyond AGP itself. That is deliberate: this app has to work when nothing else
-  on the television does.
+- One dependency: `dev.mobile:dadb` for the adb connection. Speaking the protocol by hand means an
+  RSA handshake and a packet format — far more code than the library. It publishes Java 17
+  metadata, hence `compileOptions` in `app/build.gradle.kts`.
 
 ## Where it came from
 
