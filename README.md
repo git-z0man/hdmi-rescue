@@ -47,7 +47,7 @@ It appears on the Google TV home screen as **HDMI Rescue**.
 | | |
 |---|---|
 | Switching inputs | **certain.** A VIEW intent on `content://android.media.tv/passthrough/<inputId>` — the same route the launcher takes, and it needs no permission (`TvContract.java:473-489`). |
-| Restarting the service | **an attempt only.** `killBackgroundProcesses` reaches background processes, and a bound service often is not one. Really stopping Sony's service needs `FORCE_STOP_PACKAGES`, which a sideloaded app cannot hold — not even through `pm grant`. |
+| Restarting the service | **an attempt only, and usually in vain.** `killBackgroundProcesses` reaches background processes; the stuck service was seen running as a bound foreground service, which it does not reach. Really stopping Sony's service needs `FORCE_STOP_PACKAGES`, which a sideloaded app cannot hold — not even through `pm grant`. |
 
 The app says so on screen rather than pretending otherwise: when the attempt is not enough it
 names the two routes that remain.

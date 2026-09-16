@@ -74,12 +74,16 @@ class MainActivity : Activity() {
         root.addView(section("If that is not enough"))
         val restart = button("Restart the input service (attempt)") {
             // The contract says: "Have the system immediately kill all background processes
-            // associated with the given package" — *background*. Whether the bound input service
-            // counts is the system's call, not ours.
+            // associated with the given package" — *background*. On 2026-09-15 the stuck service
+            // ran as a bound foreground service (`vis BFGS`), which this call does not reach. No
+            // exception says so either, hence the cautious wording on screen.
             val outcome = runCatching {
                 getSystemService(ActivityManager::class.java).killBackgroundProcesses(INPUT_SERVICE_PKG)
             }.fold(
-                { "Attempted. Now pick the input above once more.\n\nIf it stays black this app" },
+                {
+                    "Attempted — but Android usually keeps this service running. Pick the input " +
+                        "above once more.\n\nIf it stays black this app"
+                },
                 { "Failed: ${it.javaClass.simpleName}.\n\nThis app" },
             )
             say(

@@ -48,14 +48,19 @@ retune() {
 
 case "${1:-status}" in
 status)
-    echo "── Ports ──────────────────────────────────────────────"
-    tv "dumpsys activity service $SVC" | grep -E "^\s+SHOW Label:\[(HDMI|AV)" || true
+    # ⚠️ **Never `dumpsys activity service $SVC`.** Sony's dump throws a NullPointerException
+    # (DebugInfoManager.java:141) and takes the whole service down — seen on 2026-09-15, when a
+    # `status` run restarted the input as a side effect. `dumpsys tv_input` is the system
+    # server's own view and touches the service not at all.
+    echo "── Ports (state 0 connected, 1 standby, 2 nothing) ────"
+    tv "dumpsys tv_input" | grep -E "tvinput\.external/.*: info: .*state: [0-9]" \
+        | sed -E 's#.*/([A-Z]+[0-9]+): info: .*state: ([0-9]).*#\1  state \2#' || true
     echo
     echo "── CEC devices ────────────────────────────────────────"
     tv "dumpsys hdmi_control" | grep -E "display_name|mActiveSource|mArcEstablished" || true
     echo
     echo "── Last tune ──────────────────────────────────────────"
-    tv "dumpsys activity service $SVC" | grep -E "onTune|Last active source" | tail -3 || true
+    tv "logcat -d" | grep -E "TIS_BuiltinTisBase_EX: onTune" | tail -1 || true
     echo
     echo "── Hardware (this is where the truth is) ──────────────"
     # `not connected` means the service is stuck and `fix` is due. `notifyHardwareAvailable`
