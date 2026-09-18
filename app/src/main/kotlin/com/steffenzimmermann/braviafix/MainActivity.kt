@@ -17,6 +17,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import java.io.IOException
 
 /// A black HDMI input, fixed from the couch — no computer, no power cord.
 ///
@@ -42,6 +43,7 @@ class MainActivity : Activity() {
     private lateinit var step2: LinearLayout
     private var first: Button? = null
     private var lastInput: TvInputInfo? = null
+    private var busy = false
     private val tv by lazy { getSystemService(TvInputManager::class.java) }
 
     override fun onCreate(state: Bundle?) {
@@ -79,6 +81,20 @@ class MainActivity : Activity() {
         val repair = button("Repair — restart the input service") { repair() }
         root.addView(repair)
         first = first ?: repair
+
+        // ⚠️ **No button here, on purpose.** Restarting the system service (`am restart`) hung on
+        // 2026-09-18, and the reboot that followed brought the input list back but left Sony's own
+        // services half-started: every input then threw the player back to the home screen with
+        // `IAudioPictureSetting is not ready yet`. Only cutting the power repaired that, and Sony
+        // documents it themselves (support article 00114591).
+        root.addView(
+            hint(
+                "No inputs listed above at all, not even in the television's own settings? Then no " +
+                    "software can help — the system is holding a dead connection to its input " +
+                    "service and will not let go. Pull out the mains plug, press the power button " +
+                    "on the television once, wait two minutes, plug it back in."
+            )
+        )
 
         // The repair needs ADB debugging, which a television ships without. Rather than let the
         // button fail later, the app checks and says which of the two steps is still missing.
@@ -230,36 +246,75 @@ class MainActivity : Activity() {
 
     /// Stop Sony's service, wait for the system to bring it back, then return to the input that
     /// was black. Off the main thread — this opens a socket and may sit through a dialog.
+    ///
+    /// ⚠️ **Only while the service is connected.** Killing it is not free: if the binding dies
+    /// while the system is still setting it up, `onBindingDied` arrives instead of
+    /// `onServiceDisconnected`, and only the second one clears the flag that permits a new bind
+    /// (TvInputManagerService.java:746, :2935 — unchanged in Android 13 and 14). The system then
+    /// holds a dead binding forever and *every* input disappears, in the launcher and in the
+    /// television's own settings. That happened on 2026-09-18, and nothing short of pulling the
+    /// plug brought it back. So the connection is read first, the inputs are counted afterwards,
+    /// and a second press while one is running is ignored.
     private fun repair() {
+        if (busy) return
+        busy = true
         say(
             "Restarting the input service…\n\nIf the television asks whether to allow debugging, " +
                 "say yes and tick “Always allow”."
         )
         Thread {
-            val result = adbShell(this, "am force-stop $INPUT_SERVICE_PKG")
-            Thread.sleep(3_000)
+            val connected = serviceConnected()
+            val result = when {
+                connected == null -> Result.failure(IOException("no adb connection"))
+                !connected -> Result.failure(IllegalStateException("service not connected"))
+                else -> adbShell(this, "am force-stop $INPUT_SERVICE_PKG")
+            }
+            Thread.sleep(4_000)
+            val inputs = if (result.isSuccess) registeredInputs() else -1
             runOnUiThread {
-                result.fold(
-                    {
+                busy = false
+                when {
+                    connected == false -> say(
+                        "The television is not holding a live connection to its input service — " +
+                            "restarting it now would strand the inputs completely. Pull the plug " +
+                            "instead, see below."
+                    )
+                    result.isFailure -> say(
+                        "No adb connection: ${result.exceptionOrNull()?.javaClass?.simpleName}: " +
+                            "${result.exceptionOrNull()?.message}\n\nCheck the repair function above, " +
+                            "or repair it from a computer:  ./scripts/hdmi-rescue.sh fix"
+                    )
+                    inputs == 0 -> say(
+                        "The service was stopped, but the television has not registered its inputs " +
+                            "again. Pull the plug, see below."
+                    )
+                    else -> {
                         val back = lastInput
                         if (back == null) say("The service was restarted. Now pick the input above.")
                         else {
                             say("The service was restarted — switching back to ${label(back)}.")
                             switchTo(back)
                         }
-                    },
-                    {
-                        say(
-                            "No adb connection: ${it.javaClass.simpleName}: ${it.message}\n\n" +
-                                "Check that ADB debugging is on, or repair it from a computer:\n" +
-                                "./scripts/hdmi-rescue.sh fix"
-                        )
-                    },
-                )
+                    }
+                }
             }
         }.start()
     }
 
+    /// Is the system holding a live connection to Sony's input service? `null` when adb could not
+    /// answer at all. This is the flag the whole repair hinges on: `service: null` in the dump
+    /// means a restart would leave the television with no inputs.
+    private fun serviceConnected(): Boolean? =
+        adbShell(this, "dumpsys tv_input | grep -A3 'ExternalTvInputService}' | grep 'service:'")
+            .getOrNull()?.let { !it.contains("null") }
+
+    /// How many inputs the *system* has on file for Sony's service — zero means the binding is
+    /// stuck, whatever the app's own list says.
+    private fun registeredInputs(): Int =
+        adbShell(this, "dumpsys tv_input | grep -c 'ExternalTvInputService/'", attempts = 1)
+            .getOrNull()?.trim()?.toIntOrNull() ?: 0
+
+    /// The way out of the stuck binding, short of pulling the plug: restart the Android system
     /// ⚠️ Both setup pages are ordinary settings actions — no permission, and on this set both
     /// resolve into `com.android.tv.settings`. The fallback is the settings root, for a television
     /// that dropped the more specific intent filter.

@@ -43,6 +43,8 @@ It appears on the Google TV home screen as **HDMI Rescue**.
 1. Pick the affected input — occupied ports are listed first and one holds focus on open.
 2. If the picture stays away, press **Repair — restart the input service**. It switches back to
    the input by itself once the service is up again.
+3. **Check the repair function** says whether the adb route works, and offers the two setup steps
+   — unlocking the developer options, and switching ADB debugging on — while they are missing.
 
 | | |
 |---|---|
@@ -61,6 +63,38 @@ reads the setting on start and offers a button straight into the developer optio
 
 **Restarting the whole television is not a substitute.** The fault is a race at boot, so a reboot
 only rolls the same dice again — which is why it "sometimes" helps and often does not.
+
+## ⚠️ Read this before you extend the app
+
+`am force-stop` on the input service is safe **only while the system holds a live connection to
+it**, and the app checks that before every restart (`dumpsys tv_input`, the `service:` line of the
+`ExternalTvInputService` block). Do not remove that check, and do not fire the command blind.
+
+Why: when the binding dies while the system is still setting it up, the client gets
+`onBindingDied`, not `onServiceDisconnected`. `TvInputManagerService` clears its `bound` flag only
+in the latter (`TvInputManagerService.java:2935`), and refuses to bind again while the flag stands
+(`:746`). The system then holds a dead binding for good:
+
+```
+service: null, callback: null, bound: true, reconnecting: false
+```
+
+and **every** input disappears — from the launcher, from the input menu, and from Settings →
+External inputs → HDMI signal format. The bug is in AOSP, unchanged through Android 14, not in
+Sony's code. Nothing recovers it from the outside: no package operation, no broadcast, no binder
+call reaches that flag, and `am force-stop` cannot either — it is what causes it.
+
+Seen on 2026-09-18, and this is how far the recovery went:
+
+| Attempt | Result |
+|---|---|
+| `am force-stop` again | inputs stayed gone |
+| `am restart` (restart the system service) | logged "Shutting down activity manager…" and hung |
+| Reboot | input list back, but Sony's own services came up half-started: every input threw the player back to the home screen with `IAudioPictureSetting is not ready yet` |
+| Mains plug out, power button, two minutes, plug in | everything healthy again |
+
+Hence the app's last resort is a sentence, not a button: pull the plug. Sony documents the same
+step (support article 00114591), and it is the only one that repaired all of it.
 
 ## The script
 
