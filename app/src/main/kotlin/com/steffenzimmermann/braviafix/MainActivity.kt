@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.Button
@@ -36,6 +37,9 @@ import android.widget.TextView
 class MainActivity : Activity() {
 
     private lateinit var log: TextView
+    private lateinit var status: TextView
+    private lateinit var step1: LinearLayout
+    private lateinit var step2: LinearLayout
     private var first: Button? = null
     private var lastInput: TvInputInfo? = null
     private val tv by lazy { getSystemService(TvInputManager::class.java) }
@@ -76,19 +80,48 @@ class MainActivity : Activity() {
         root.addView(repair)
         first = first ?: repair
 
-        // ⚠️ **The repair needs ADB debugging, and most televisions ship with it off.** The key is
-        // readable without any permission (`@Readable` since Android 12), so the app can say so
-        // instead of letting the button fail later.
-        if (Settings.Global.getInt(contentResolver, Settings.Global.ADB_ENABLED, 0) == 0) {
-            root.addView(
+        // The repair needs ADB debugging, which a television ships without. Rather than let the
+        // button fail later, the app checks and says which of the two steps is still missing.
+        root.addView(section("Repair function"))
+        status = hint("").apply { setTextColor(ACCENT) }
+        root.addView(status)
+        root.addView(button("Check the repair function") { check(patient = true) })
+
+        // ⚠️ Two switches, so two steps: unlocking the developer options does *not* switch ADB
+        // debugging on. Each block hides on its own, so a screen read in an emergency carries the
+        // one step that is still missing rather than a setup guide.
+        step1 = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            // ⚠️ The button can only reach the page, not the line: no intent addresses a single
+            // settings entry, so the entry is named here instead. It is the last one on the page,
+            // below the kernel version — out of sight until you scroll.
+            addView(
                 hint(
-                    "ADB debugging is switched off, and the repair cannot work without it. In the " +
-                        "developer options: Debugging → USB debugging. On a television that is what " +
-                        "opens the port this app talks to."
+                    "Step 1 — unlock the developer options: on the page that opens, scroll to the " +
+                        "very bottom, to “Android TV OS build” (“Android TV-Betriebssystem-Build”), " +
+                        "and select it seven times, until the television says you are a developer."
                 )
             )
-            root.addView(button("Open the developer options") { openDeveloperOptions() })
+            addView(button("Step 1 — open the About page") { open(Settings.ACTION_DEVICE_INFO_SETTINGS) })
         }
+        step2 = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            addView(
+                hint(
+                    "Step 2 — in the developer options: Debugging → ADB debugging. On a television " +
+                        "with no USB device port, that switch is what opens the port this app uses."
+                )
+            )
+            addView(
+                button("Step 2 — open the developer options") {
+                    open(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+                }
+            )
+        }
+        root.addView(step1)
+        root.addView(step2)
 
         log = hint("").apply { setTextColor(ACCENT) }
         root.addView(log)
@@ -103,6 +136,57 @@ class MainActivity : Activity() {
         // DOWN press before anything is even highlighted looks like the next defect. `post`,
         // because a node cannot take focus before the first layout pass.
         first?.let { target -> target.post { target.requestFocus() } }
+    }
+
+    /// The check belongs here rather than in `onCreate`: this also runs when the user comes back
+    /// from the settings, which is exactly when the answer changes.
+    ///
+    /// ⚠️ One attempt only, unlike the button: with the key not yet authorised [adbShell] waits
+    /// out the dialog for half a minute, and nobody opened this screen to watch it think.
+    override fun onResume() {
+        super.onResume()
+        check(patient = false)
+    }
+
+    /// Is the repair actually available? Three answers, and each names what to do next: ADB
+    /// debugging off, on but no connection (the dialog is waiting, or the key was refused), or
+    /// ready. Runs again whenever the user comes back from the settings.
+    ///
+    /// `patient` is for the button: then the attempt is worth the full waiting time, because
+    /// someone is standing by to confirm the dialog with the remote.
+    private fun check(patient: Boolean) {
+        status.text = "Checking…"
+        Thread {
+            // Both keys are readable without a permission (`@Readable` since Android 12).
+            val unlocked = global(Settings.Global.DEVELOPMENT_SETTINGS_ENABLED)
+            val enabled = global(Settings.Global.ADB_ENABLED)
+            // `id` is the smallest command that proves the whole chain: connection, key accepted,
+            // and a shell that answers. It should say uid=2000(shell).
+            val reply = if (enabled) adbShell(this, "id", attempts = if (patient) 15 else 1) else null
+            runOnUiThread {
+                when {
+                    !unlocked -> state("The developer options are locked — steps 1 and 2 below.", true, true)
+                    !enabled -> state("ADB debugging is off — step 2 below.", false, true)
+                    reply!!.isSuccess -> state("Ready — the repair button works.", false, false)
+                    else -> state(
+                        "ADB debugging is on, but there is no connection: " +
+                            "${reply.exceptionOrNull()?.message}\n\nIf the television is showing the " +
+                            "debugging dialog, allow it and tick “Always allow”, then check again.",
+                        false,
+                        true,
+                    )
+                }
+            }
+        }.start()
+    }
+
+    private fun global(key: String) =
+        runCatching { Settings.Global.getInt(contentResolver, key, 0) != 0 }.getOrDefault(false)
+
+    private fun state(text: String, one: Boolean, two: Boolean) {
+        status.text = text
+        step1.visibility = if (one) View.VISIBLE else View.GONE
+        step2.visibility = if (two) View.VISIBLE else View.GONE
     }
 
     /// Pass-through inputs only — HDMI and AV. Everything else (tuners, Play Movies) is not what
@@ -176,16 +260,13 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    /// ⚠️ On Android 12 TV settings the developer options open straight from this action, master
-    /// switch first on the page — no seven taps on the build number. The fallbacks are for a
-    /// television that dropped the intent filter: the About page carries that build number.
-    private fun openDeveloperOptions() {
-        val actions = listOf(
-            Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS,
-            Settings.ACTION_DEVICE_INFO_SETTINGS,
-            Settings.ACTION_SETTINGS,
-        )
-        if (actions.none { runCatching { startActivity(Intent(it)) }.isSuccess }) {
+    /// ⚠️ Both setup pages are ordinary settings actions — no permission, and on this set both
+    /// resolve into `com.android.tv.settings`. The fallback is the settings root, for a television
+    /// that dropped the more specific intent filter.
+    private fun open(action: String) {
+        if (runCatching { startActivity(Intent(action)) }.isFailure &&
+            runCatching { startActivity(Intent(Settings.ACTION_SETTINGS)) }.isFailure
+        ) {
             say("This television opens none of the settings screens by itself.")
         }
     }

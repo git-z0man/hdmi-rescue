@@ -20,10 +20,9 @@ import java.io.IOException
 private const val HOST = "127.0.0.1"
 private const val PORT = 5555
 
-/// ~30 s of retrying, because the first connection waits for a human with a remote control.
-private const val ATTEMPTS = 15
-
-fun adbShell(context: Context, command: String): Result<String> {
+/// 15 attempts are ~30 s of retrying, which is what the first connection needs: it waits for a
+/// human with a remote control. A check nobody asked for passes 1.
+fun adbShell(context: Context, command: String, attempts: Int = 15): Result<String> {
     // ⚠️ Our own key pair in filesDir. `AdbKeyPair.readDefault()` looks under `~/.android`, which
     // on Android resolves to `/` and throws. Both files are kept: read without the public one and
     // dadb sends an empty RSAPUBLICKEY, so the television can never offer the dialog at all.
@@ -35,7 +34,7 @@ fun adbShell(context: Context, command: String): Result<String> {
     }.getOrElse { return Result.failure(it) }
 
     var last: Throwable = IOException("no attempt made")
-    repeat(ATTEMPTS) {
+    repeat(attempts) {
         // ⚠️ A fresh connection per attempt, and `socketTimeout` is not optional: without it the
         // handshake blocks forever while the dialog waits on screen, and a timed-out socket is
         // never reopened by dadb, only reused.
