@@ -36,6 +36,24 @@ PS5="$SVC%2F.ExternalTvInputService%2FHDMI400004"
 adb connect "$BRAVIA" >/dev/null 2>&1 || true
 tv() { adb -s "$BRAVIA" shell "$@"; }
 
+# ⚠️ **Never stop that service unless the system holds a live connection to it.** If the binding
+# dies while it is still being set up, the system gets `onBindingDied` instead of
+# `onServiceDisconnected`, and only the second one clears the flag that allows a new bind
+# (TvInputManagerService.java:2935 and :746 — unchanged through Android 14). It then holds a dead
+# binding for good and *every* input disappears, from the launcher and from the television's own
+# settings. Seen on 2026-09-18; nothing but pulling the mains plug for two minutes brought it back.
+connected() { ! tv "dumpsys tv_input" | grep -A3 "ExternalTvInputService}" | grep -q "service: null"; }
+
+stop_service() {
+    if connected; then
+        tv "am force-stop $SVC"
+    else
+        echo "The system holds no live connection to the input service — stopping it now would" >&2
+        echo "strand every input. Pull the mains plug, press the power button, wait two minutes." >&2
+        return 1
+    fi
+}
+
 # `TvContract.buildChannelUriForPassthroughInput` builds exactly these two segments
 # (android-platform/37.2/media/tv/TvContract.java:473-489, PATH_PASSTHROUGH = "passthrough").
 # A VIEW intent on it is what the launcher sends when it switches inputs — no permission, no
@@ -82,7 +100,7 @@ fix)
     if grep -q "notifyHardwareAvailable" <<<"$log"; then
         echo "     hardware is there — nothing more was needed."
     else
-        echo "2/3  restarting the input service…"; tv "am force-stop $SVC"; sleep 4
+        echo "2/3  restarting the input service…"; stop_service; sleep 4
         echo "3/3  re-tuning once more…";          retune "${2:-}"; sleep 5
     fi
     echo
@@ -90,6 +108,6 @@ fix)
     echo "Look at the screen."
     ;;
 retune)        retune "${2:-}" ;;
-restart-input) tv "am force-stop $SVC"; echo "Service stopped — Android restarts it on next use." ;;
+restart-input) stop_service && echo "Service stopped — Android restarts it on next use." ;;
 *)             echo "unknown: $1" >&2; exit 2 ;;
 esac

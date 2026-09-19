@@ -24,8 +24,8 @@ misleading: the port reports `connected`, CEC lists the device by name and as th
 and the input banner appears normally.
 
 Switching inputs, re-tuning and toggling CEC change nothing; they all end in the same failed
-`acquireHardware`. Only restarting the service helps — or restarting the whole television, which
-is the usual ritual and the reason it "eventually comes back".
+`acquireHardware`. Restarting the service is what helps. Restarting the whole television is the
+usual ritual, but an unreliable one — see below.
 
 Proven on 2026-09-11 with a PlayStation 5 on HDMI 4: after the service restart the log went from
 that error to `notifyHardwareAvailable`, and the picture came back at 3840×2160@60.
@@ -58,7 +58,8 @@ while a service holding TV hardware sits at 100 — the system binds it with
 signature-only. Hence the detour through adb.
 
 **What it needs:** ADB debugging switched on at the television (developer options → Debugging →
-USB debugging; on a set with no USB device port, that switch is what opens port 5555), and the
+**ADB debugging**, labelled *USB debugging* on some builds; on a set with no USB device port, that
+one switch is what opens port 5555), and the
 "Allow debugging?" dialog confirmed once with the remote, with *Always allow* ticked. The app
 reads the setting on start and offers a button straight into the developer options when it is off.
 
@@ -126,6 +127,6 @@ is on screen, so it is not something to run over someone's shoulder unannounced.
 ## Where it came from
 
 The app and script were built inside another project of mine, a television player, while chasing a
-black HDMI 4, and moved here once they turned out to have nothing to do with the player. The application id still
-reads `com.steffenzimmermann.braviafix`, the name it shipped under, so an install upgrades the
-copy already on the television instead of leaving an orphan beside it.
+black HDMI 4, and moved here once they turned out to have nothing to do with the player. The
+application id still reads `com.steffenzimmermann.braviafix`, the name it shipped under, so an
+install upgrades the copy already on the television instead of leaving an orphan beside it.
