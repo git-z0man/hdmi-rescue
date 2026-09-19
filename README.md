@@ -130,3 +130,7 @@ The app and script were built inside another project of mine, a television playe
 black HDMI 4, and moved here once they turned out to have nothing to do with the player. The
 application id still reads `com.steffenzimmermann.braviafix`, the name it shipped under, so an
 install upgrades the copy already on the television instead of leaving an orphan beside it.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
