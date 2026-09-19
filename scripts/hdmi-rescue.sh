@@ -22,10 +22,10 @@
 # `acquireHardware`. Only restarting the service helps — or the whole television, which used to
 # be the method.
 set -euo pipefail
-: "${ANDROID_HOME:=/Volumes/Extern/Developer/swift-android/android-sdk}"
-export PATH="$ANDROID_HOME/platform-tools:$PATH"
+[ -n "${ANDROID_HOME:-}" ] && export PATH="$ANDROID_HOME/platform-tools:$PATH"
 
-BRAVIA="${BRAVIA:-10.1.1.22:5555}"
+# Your television, as `adb connect` wants it. Find the address under Settings → Network.
+BRAVIA="${BRAVIA:?set BRAVIA=<host:port>, e.g. BRAVIA=192.168.1.20:5555}"
 SVC="com.sony.dtv.tvinput.external"
 # ⚠️ The raw port is the sturdier target: `HW5` is "HDMI 4" and depends on no CEC negotiation.
 # `HDMI400004` is the CEC *device* on port 4 ("PlayStation 5"), which is what lets the console be

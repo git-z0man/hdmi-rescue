@@ -33,9 +33,10 @@ that error to `notifyHardwareAvailable`, and the picture came back at 3840×2160
 ## The app
 
 ```bash
+TV=192.168.1.20:5555          # your set's address, from Settings → Network
 ./gradlew :app:assembleRelease
-adb connect 10.1.1.22:5555
-adb -s 10.1.1.22:5555 install -r app/build/outputs/apk/release/app-release.apk
+adb connect "$TV"
+adb -s "$TV" install -r app/build/outputs/apk/release/app-release.apk
 ```
 
 It appears on the Google TV home screen as **HDMI Rescue**.
@@ -99,12 +100,14 @@ step (support article 00114591), and it is the only one that repaired all of it.
 ## The script
 
 ```bash
+export BRAVIA=192.168.1.20:5555   # your set's address
 ./scripts/hdmi-rescue.sh status   # ports, CEC, last tune — and the hardware line
 ./scripts/hdmi-rescue.sh fix      # re-tune, and restart the service only if that was not enough
 ```
 
 `fix` checks the log for `notifyHardwareAvailable` after re-tuning and stops as soon as that is
-enough. Set `BRAVIA=<host:port>` to point it at a different set.
+enough. `BRAVIA=<host:port>` is required and says which set to talk to; `ANDROID_HOME` is only
+needed when `adb` is not already on the `PATH`.
 
 ⚠️ **The script never sends a key to the television.** Everything it reads is `dumpsys` and
 `logcat`; the input is chosen through the passthrough intent. The input switch still changes what
