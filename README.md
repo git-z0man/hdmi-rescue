@@ -59,8 +59,8 @@ signature-only. Hence the detour through adb.
 
 **What it needs:** ADB debugging switched on at the television (developer options → Debugging →
 **ADB debugging**, labelled *USB debugging* on some builds; on a set with no USB device port, that
-one switch is what opens port 5555), and the
-"Allow debugging?" dialog confirmed once with the remote, with *Always allow* ticked. The app
+one switch is what opens port 5555), and the "Allow debugging?" dialog confirmed once with the
+remote, with *Always allow* ticked. The app
 reads the setting on start and offers a button straight into the developer options when it is off.
 
 **Restarting the whole television is not a substitute.** The fault is a race at boot, so a reboot
