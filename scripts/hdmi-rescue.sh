@@ -6,6 +6,7 @@
 #   ./scripts/hdmi-rescue.sh retune      # re-tune HDMI 4 (the raw port)
 #   ./scripts/hdmi-rescue.sh retune ps5  # re-tune the CEC entry "PlayStation 5"
 #   ./scripts/hdmi-rescue.sh restart-input   # restart the input service
+#   (`fix` first checks for the second fault, picture menu greyed out — see `settings_state`)
 #
 # ⚠️ **What actually breaks here** (proven on the device on 2026-09-11): Sony's
 # `com.sony.dtv.tvinput.external` starts with the television and sometimes fails to connect to
@@ -54,6 +55,18 @@ stop_service() {
     fi
 }
 
+# ⚠️ **The second boot fault** (2026-11-14): every input throws the player back to the home screen,
+# the picture menu is greyed out, the log says `IAudioPictureSetting is not ready yet`. Sony's
+# vendor service lost its bindings to Bravia Sync (all `DEAD`; it was stopped at boot with a start timeout)
+# and never rebinds; it is persistent, so `am force-stop` skips it and `am crash` makes the system
+# restart it cleanly. `stuck` needs records that are all `DEAD` — an empty dump says `ok`, so a
+# timeout never crashes a system service. `services` (plural) is the system server's own record
+# and never calls into the app.
+VENDOR="com.sony.dtv.sonyvendorservice"
+settings_state() {
+    tv "dumpsys activity services com.sony.dtv.braviasyncservice | grep -B1 'BraviaSyncService:$VENDOR}' | grep ConnectionRecord | awk '/DEAD/{d++} !/DEAD/{l++} END{print (d>0 && l==0) ? \"stuck\" : \"ok\"}'" | tr -d '\r'
+}
+
 # `TvContract.buildChannelUriForPassthroughInput` builds exactly these two segments
 # (android-platform/37.2/media/tv/TvContract.java:473-489, PATH_PASSTHROUGH = "passthrough").
 # A VIEW intent on it is what the launcher sends when it switches inputs — no permission, no
@@ -87,8 +100,17 @@ status)
     echo
     echo "── Signal ─────────────────────────────────────────────"
     tv "logcat -d" | grep -oE "SignalInfo\{[^}]*\}" | tail -1 || true
+    echo
+    echo "── Picture/sound settings (stuck = fix restarts the vendor service) ─"
+    settings_state
     ;;
 fix)
+    if [ "$(settings_state)" = "stuck" ]; then
+        echo "1/2  vendor service lost Bravia Sync — restarting it…"; tv "am crash $VENDOR"; sleep 10
+        echo "2/2  re-tuning…"; retune "${2:-}"
+        echo "settings now: $(settings_state). Look at the screen."
+        exit 0
+    fi
     # Smallest rung first: when only the session is stale after a hotplug, re-tuning is enough
     # and the service stays up.
     # ⚠️ Only log lines from *after* the re-tune count — an old `notifyHardwareAvailable` from

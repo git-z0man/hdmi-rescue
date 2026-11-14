@@ -30,6 +30,57 @@ usual ritual, but an unreliable one — see below.
 Proven on 2026-09-11 with a PlayStation 5 on HDMI 4: after the service restart the log went from
 that error to `notifyHardwareAvailable`, and the picture came back at 3840×2160@60.
 
+## The second fault
+
+Every input throws the player back to the home screen, and picture mode, brightness and audio
+output are greyed out. The log shows `IAudioPictureSetting is not ready yet`.
+
+Sony's `com.sony.dtv.sonyvendorservice` reports that interface ready only once its bindings to
+`com.sony.dtv.braviasyncservice` connect. When Bravia Sync is stopped at boot (see "The root
+cause" below), all five of those bindings end `DEAD` in
+`dumpsys activity services com.sony.dtv.braviasyncservice`. Sony handles no `onBindingDied` and
+never binds again.
+
+`am force-stop` does nothing here, because the vendor service is persistent and is skipped.
+`am crash com.sony.dtv.sonyvendorservice` makes the system restart it, and it binds afresh.
+
+This was proven on 2026-11-14 after a `kernel_panic,sysrq_trigwarmd_crash` boot. Before the
+restart there were zero live connections, afterwards five, and HDMI 4 held with no crash. The
+repair button and `fix` try this first. They do so only when connections exist and every one is
+`DEAD`, so an empty dump never triggers it.
+
+## The root cause of both faults
+
+Both faults begin the same way. While the television boots, Android stops every app process that
+has not attached within 10 s. `dumpsys activity exit-info` records this as
+`reason=7 (INITIALIZATION FAILURE)` with `description=start timeout`. Sony never rebinds to a
+service it lost this way:
+- When Bravia Sync is hit, you get the second fault.
+- When `com.sony.dtv.tvinput.hardwaremanager` is hit, you get the first.
+
+On this set, 13–14 Sony and Google processes went that way within a single second on almost every
+boot. The cause was a USB flash drive that had been set up as internal storage (adopted, and
+primary storage) for months. The first start timeouts in the exit history appear two days after
+the drive was set up.
+
+Measured on 2026-11-14:
+
+| Boot | USB drive | Start timeouts |
+|---|---|---|
+| 1 | adopted, primary | 14 |
+| 2, 3 | reformatted as removable | 0, 0 |
+| 4, 5 | unplugged | 0, 0 |
+
+The fix was to move primary storage back to internal (`pm move-primary-storage internal`), then
+format the drive as removable storage (`sm partition <disk> public`) and remove its old record
+(`sm forget <uuid>`). The app now says after a repair how many services were stopped at start-up,
+and whether a drive is still set up as internal storage.
+
+The nightly `kernel_panic,sysrq_trigwarmd_crash` boots have a separate cause, but they set up the
+same situation. The shutdown hung while the volumes were torn down (`vdc volume shutdown`).
+MediaTek's `/vendor/etc/service/mt_shutdown_monitor.sh` then forces a reboot through
+`/proc/sysrq-trigger` once a shutdown takes longer than 15 s.
+
 ## The app
 
 ```bash
@@ -41,16 +92,21 @@ adb -s "$TV" install -r app/build/outputs/apk/release/app-release.apk
 
 It appears on the Google TV home screen as **HDMI Rescue**.
 
-1. Pick the affected input — occupied ports are listed first and one holds focus on open.
-2. If the picture stays away, press **Repair — restart the input service**. It switches back to
-   the input by itself once the service is up again.
-3. **Check the repair function** says whether the adb route works, and offers the two setup steps
-   — unlocking the developer options, and switching ADB debugging on — while they are missing.
+The screen has one button, **Repair**, which holds focus when the app opens. Pressing it does
+three things:
+
+1. It checks which fault the television has.
+   - If the settings are stuck, it restarts the vendor service with `am crash` (see the second
+     fault above).
+   - Otherwise it restarts the input service with `am force-stop`.
+2. It goes back to the input the television last tried to play. The app reads that input from the
+   passthrough URI in the log.
+3. If adb is unreachable, it explains the setup and shows a button into the developer options.
 
 | | |
 |---|---|
-| Switching inputs | **certain.** A VIEW intent on `content://android.media.tv/passthrough/<inputId>` — the same route the launcher takes, and it needs no permission (`TvContract.java:473-489`). |
-| Restarting the service | **the real repair, with one prerequisite.** The app connects to the television's own adb daemon on `127.0.0.1:5555` and runs `am force-stop` there. That shell is uid 2000 and holds `FORCE_STOP_PACKAGES`; the app itself never could. |
+| Switching inputs | **Certain.** The app sends a VIEW intent on `content://android.media.tv/passthrough/<inputId>`. This is the same route the launcher takes, and it needs no permission (`TvContract.java:473-489`). |
+| Restarting a service | **The real repair, with one prerequisite.** The app connects to the television's own adb daemon on `127.0.0.1:5555` and runs the command there. That shell runs as uid 2000 and holds `FORCE_STOP_PACKAGES`. The app itself never could. |
 
 No app can stop that service directly. `killBackgroundProcesses` stops at oom priority 500,
 while a service holding TV hardware sits at 100 — the system binds it with
@@ -60,8 +116,8 @@ signature-only. Hence the detour through adb.
 **What it needs:** ADB debugging switched on at the television (developer options → Debugging →
 **ADB debugging**, labelled *USB debugging* on some builds; on a set with no USB device port, that
 one switch is what opens port 5555), and the "Allow debugging?" dialog confirmed once with the
-remote, with *Always allow* ticked. The app
-reads the setting on start and offers a button straight into the developer options when it is off.
+remote, with *Always allow* ticked. When adb cannot be reached, the app says so after the press
+and offers a button straight into the developer options.
 
 **Restarting the whole television is not a substitute.** The fault is a race at boot, so a reboot
 only rolls the same dice again — which is why it "sometimes" helps and often does not.
@@ -106,8 +162,9 @@ export BRAVIA=192.168.1.20:5555   # your set's address
 ./scripts/hdmi-rescue.sh fix      # re-tune, and restart the service only if that was not enough
 ```
 
-`fix` checks the log for `notifyHardwareAvailable` after re-tuning and stops as soon as that is
-enough. `BRAVIA=<host:port>` is required and says which set to talk to; `ANDROID_HOME` is only
+`fix` first checks for the second fault, and restarts the vendor service if the settings are
+stuck. Otherwise it checks the log for `notifyHardwareAvailable` after re-tuning, and stops as
+soon as that is enough. `BRAVIA=<host:port>` is required and says which set to talk to; `ANDROID_HOME` is only
 needed when `adb` is not already on the `PATH`.
 
 ⚠️ **The script never sends a key to the television.** Everything it reads is `dumpsys` and
