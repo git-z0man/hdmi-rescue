@@ -1,4 +1,4 @@
-package com.steffenzimmermann.braviafix
+package tv.hdmirescue.app
 
 import android.content.Context
 import dadb.AdbKeyPair

@@ -1,4 +1,4 @@
-package com.steffenzimmermann.braviafix
+package tv.hdmirescue.app
 
 import android.app.Activity
 import android.content.Intent

@@ -7,21 +7,20 @@ plugins {
 // dependency is dadb, for the repair itself — speaking ADB by hand means an RSA handshake and a
 // packet format, which is a great deal more code than a library.
 android {
-    // The namespace and application id still say "braviafix" — the name this app shipped under
-    // when it lived inside the zplayer-tv repository. Keeping it means an install upgrades the
-    // copy already on the television instead of leaving a second, orphaned entry next to it.
-    namespace = "com.steffenzimmermann.braviafix"
+    // Renamed from the author-named "braviafix" id it first shipped under. An install of this
+    // build does not upgrade that copy: uninstall the old one on the television first.
+    namespace = "tv.hdmirescue.app"
     compileSdk = 37
     compileSdkMinor = 2
 
     defaultConfig {
-        applicationId = "com.steffenzimmermann.braviafix"
+        applicationId = "tv.hdmirescue.app"
         // The Bravia is 31; 28 keeps a Fire TV Stick in range should it ever show the same
         // illness.
         minSdk = 28
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
     }
 
     // dadb publishes `org.gradle.jvm.version: 17` from 1.2.10 on; without this the dependency

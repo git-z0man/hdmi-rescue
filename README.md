@@ -185,8 +185,8 @@ is on screen, so it is not something to run over someone's shoulder unannounced.
 
 The app and script were built inside another project of mine, a television player, while chasing a
 black HDMI 4, and moved here once they turned out to have nothing to do with the player. The
-application id still reads `com.steffenzimmermann.braviafix`, the name it shipped under, so an
-install upgrades the copy already on the television instead of leaving an orphan beside it.
+application id changed to `tv.hdmirescue.app` in version 1.2. An install of 1.2 does not upgrade
+1.1 or earlier: uninstall the old copy on the television first, or both stay side by side.
 
 ## License
 
